@@ -6,8 +6,11 @@
 
 [.Net6](https://dotnet.microsoft.com/en-us/download) / [System.IO.Pipeline](https://www.nuget.org/packages/System.IO.Pipelines/)
 
-## Recommend usage
+## How to use
 
-- Implement a new server class that inherited TCPServer class and overrides virtual functions.
+You can check out [examples](https://github.com/yoonbigbear/DotNetTCP/tree/main/example)
 
-- PipeReader buffer has a limited byte size of 65535. If received data is over the maximum value can cause unexpected errors.
+## Keep in mind
+
+- The default pipeReader buffer size is 4096. But in this project, I changed to 65535.
+  If received data is over the maximum value can cause unexpected errors.
