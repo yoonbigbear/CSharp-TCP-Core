@@ -1,4 +1,4 @@
-# DotNetTCPServerCore
+# DotNetTCP
 
 .Net 6 / Tcp socket server
 
