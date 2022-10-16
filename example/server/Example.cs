@@ -1,8 +1,6 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
 using System.Net.Sockets;
-using System.Reflection.PortableExecutable;
-using System.Security.Cryptography.X509Certificates;
 using TCPCore;
 
 class Example
