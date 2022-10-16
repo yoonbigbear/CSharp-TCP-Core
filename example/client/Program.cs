@@ -21,7 +21,7 @@ namespace SampleClient
 				short datasize = 10;
 				byte[] data = new byte[datasize];
 				Send(
-					i,
+					1,
 					datasize,
 					data,
 					socket);
