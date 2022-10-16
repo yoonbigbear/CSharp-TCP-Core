@@ -19,14 +19,6 @@ namespace TCPCore
 	public class TCPServer
 	{
 		IPEndPoint endpoint;
-		Time time = new Time();
-
-		//packet queue
-		public PacketQueue packetQueue = new PacketQueue();
-
-		const float frameRate = 0.1f;
-
-		TCPSession user = null;
 
 		public virtual void Start(ServerConfig config)
 		{
@@ -37,9 +29,6 @@ namespace TCPCore
 			endpoint = new IPEndPoint(/*addr[1]*/
 				address: IPAddress.Parse(config.Ipv4),
 				port: config.Port);
-
-			//time value initialize
-			time.Start();
 
 			//Accept new session 
 			_ = Task.Run(Listening);
@@ -63,39 +52,10 @@ namespace TCPCore
 			if (socketTask.IsCompletedSuccessfully)
 			{
 				Logger.DebugInfo($"Task Id {socketTask.Id} Socket Accepted");
-
-				//Single user Session
-				user = new TCPSession(socketTask.Result);
-				user.SessionId = socketTask.Result.Handle.ToInt32();
-				user.Server = this;
-				user.Init();
-
 			}
 			else
 			{
 				Logger.DebugInfo($"Accept Failed Task Id {socketTask.Id}");
-			}
-		}
-
-		//Single server logic
-		public void Run()
-		{
-			time.UpdateDeltaTime();
-
-			if (Time.Delta > frameRate)
-			{
-				packetQueue.TransferTo(out var packets);
-
-				//need packet handler
-				int i = 0;
-				int count = packets.Count;
-				for (i = 0; i < count; ++i)
-				{
-					var packet = packets[i];
-					Logger.DebugInfo($"Id: {packet.id}, size: {packet.dataSize}");
-				}
-
-				Time.Delta = 0;
 			}
 		}
 	}

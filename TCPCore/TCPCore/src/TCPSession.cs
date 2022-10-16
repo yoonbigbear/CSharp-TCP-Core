@@ -9,19 +9,17 @@ namespace TCPCore
 	//https://github.com/davidfowl/TcpEcho/blob/master/src/Server/Program.cs
 	public class TCPSession
 	{
-		Socket socket;
-		PipeReader reader;
+		protected Socket socket;
+		protected PipeReader reader;
 
-		List<Packet> packets = new List<Packet>();
+		public TCPSession(Socket socket) => this.socket = socket;
 
-		public TCPServer Server { get; set; }
-		public int SessionId { get; set; }
-
-		public TCPSession(Socket socket)
+		public virtual void Disconnect()
 		{
-			this.socket = socket;
+			socket.Shutdown(SocketShutdown.Both);
+			socket.Close();
+			Logger.LogInfo("session disconnect");
 		}
-
 		public virtual void Init()
 		{
 			socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.NoDelay, true);
@@ -34,8 +32,7 @@ namespace TCPCore
 
 			Task.Run(() => { Receive(); });
 		}
-
-		async void Receive()
+		public virtual async void Receive()
 		{
 			try
 			{
@@ -59,15 +56,11 @@ namespace TCPCore
 						if (buffer.Start.Equals(buffer.End))
 							break;
 
-						var offset = ReadBuffer(buffer.Slice(0));
+						var offset = Deserealize(buffer.Slice(0), out var packet);
 						SequencePosition end = buffer.GetPosition(offset);
 
 						buffer = buffer.Slice(end);
 					}
-
-					//enqueue packets
-					Server.packetQueue.AddRange(packets);
-					packets.Clear();
 
 					//move cursor
 					reader.AdvanceTo(buffer.Start, buffer.End);
@@ -84,7 +77,21 @@ namespace TCPCore
 			}
 		}
 
-		public void Send(Packet pkt)
+
+		public void Send(byte[] bytes) => socket.Send(bytes);
+		public void Send(List<Packet> pkt)
+		{
+			List<ArraySegment<byte>> array = new List<ArraySegment<byte>>();
+
+			foreach (var e in pkt)
+				array.Add(Serealize(e));
+
+			socket.Send(array);
+		}
+
+
+
+		public byte[] Serealize(Packet pkt)
 		{
 			//header + datasize
 			byte[] array = new byte[sizeof(short) + sizeof(short) + pkt.dataSize];
@@ -96,16 +103,14 @@ namespace TCPCore
 			Buffer.BlockCopy(BitConverter.GetBytes(pkt.dataSize),
 				0, array, offset, sizeof(short));
 			offset += sizeof(short);
-			Buffer.BlockCopy(pkt.data, 0, array, offset, pkt.dataSize);
+			Buffer.BlockCopy(pkt.data.ToArray(), 0, array, offset, pkt.dataSize);
 
-			socket.Send(array);
+			return array;
 		}
-
-		int ReadBuffer(ReadOnlySequence<byte> buffer)
+		protected int Deserealize(ReadOnlySequence<byte> buffer, out Packet packet)
 		{
 			ReadOnlySpan<byte> buf = buffer.FirstSpan;
-
-			var packet = new Packet();
+			packet = new Packet();
 			int offset = 0;
 
 			packet.id = BitConverter.ToInt16(buf.Slice(offset, sizeof(short)));
@@ -117,15 +122,7 @@ namespace TCPCore
 			packet.data = buf.Slice(offset, packet.dataSize).ToArray();
 			offset += packet.dataSize;
 
-			packets.Add(packet);
 			return offset;
-		}
-
-		public virtual void Disconnect()
-		{
-			socket.Shutdown(SocketShutdown.Both);
-			socket.Close();
-			Logger.LogInfo("session disconnect");
 		}
 
 	}
