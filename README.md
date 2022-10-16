@@ -1,6 +1,6 @@
 # DotNetTCPServerCore
 
-.Net 6 / Tcp socket pipeline server
+.Net 6 / Tcp socket server
 
 ## Requirements
 
@@ -8,6 +8,6 @@
 
 ## Recommend usage
 
-Implement a new server class that inherited TCPServer class and overrides virtual functions.
+- Implement a new server class that inherited TCPServer class and overrides virtual functions.
 
-PipeReader buffer has a limited byte size of 65535. If received data is over the maximum value can cause unexpected errors.
+- PipeReader buffer has a limited byte size of 65535. If received data is over the maximum value can cause unexpected errors.
