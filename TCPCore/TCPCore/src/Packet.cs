@@ -4,7 +4,7 @@
 	{
 		public short id;
 		public short dataSize;
-		public Memory<byte> data;
+		public byte[] data;
 	}
 
 	public class PacketQueue

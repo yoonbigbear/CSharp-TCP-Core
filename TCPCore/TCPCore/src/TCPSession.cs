@@ -84,9 +84,21 @@ namespace TCPCore
 			}
 		}
 
-		public void Send(byte[] data)
+		public void Send(Packet pkt)
 		{
-			Task.Run(() => socket.Send(data));
+			//header + datasize
+			byte[] array = new byte[sizeof(short) + sizeof(short) + pkt.dataSize];
+
+			int offset = 0;
+			Buffer.BlockCopy(BitConverter.GetBytes(pkt.id),
+				0, array, offset, sizeof(short));
+			offset += sizeof(short);
+			Buffer.BlockCopy(BitConverter.GetBytes(pkt.dataSize),
+				0, array, offset, sizeof(short));
+			offset += sizeof(short);
+			Buffer.BlockCopy(pkt.data, 0, array, offset, pkt.dataSize);
+
+			socket.Send(array);
 		}
 
 		int ReadBuffer(ReadOnlySequence<byte> buffer)
