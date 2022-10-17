@@ -79,11 +79,12 @@ namespace TCPCore
 
 
 		public void Send(byte[] bytes) => socket.Send(bytes);
-		public void Send(List<Packet> pkt)
+		public void Send(Packet pkt) => socket.Send(Serealize(pkt));
+		public void Send(List<Packet> pkts)
 		{
 			List<ArraySegment<byte>> array = new List<ArraySegment<byte>>();
 
-			foreach (var e in pkt)
+			foreach (var e in pkts)
 				array.Add(Serealize(e));
 
 			socket.Send(array);
@@ -91,7 +92,7 @@ namespace TCPCore
 
 
 
-		public byte[] Serealize(Packet pkt)
+		protected byte[] Serealize(Packet pkt)
 		{
 			//header + datasize
 			byte[] array = new byte[sizeof(short) + sizeof(short) + pkt.dataSize];
