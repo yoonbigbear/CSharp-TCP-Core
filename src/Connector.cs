@@ -4,9 +4,9 @@ using System.Net.Sockets;
 public class Connector
 {
 	IPEndPoint? endpoint;
-	public void Start()
+	public void Start(string ip, short port)
 	{
-		endpoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 11000);
+		endpoint = new IPEndPoint(IPAddress.Parse(ip), port);
 	}
 
 	//서버에 소켓 연결 시도
@@ -30,7 +30,7 @@ public class Connector
 		}
 	}
 
-	void AfterConnect(Task task)
+	public virtual void AfterConnect(Task task)
 	{
 		if (task.IsCompletedSuccessfully)
 		{

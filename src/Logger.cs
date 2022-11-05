@@ -1,8 +1,23 @@
-﻿namespace TCPCore
+﻿using Newtonsoft.Json;
+using System.Diagnostics;
+using System.Text;
+
+namespace TCPCore
 {
 	static public class Logger
 	{
 		static object _lock = new object();
+
+		static public bool Assert(bool condition)
+		{
+			Debug.Assert(condition);
+			return condition;
+		}
+		static public bool Assert(bool condition, string msg)
+		{
+			Debug.Assert(condition, msg);
+			return condition;
+		}
 
 		static public void DebugInfo(string str) 
 		{
@@ -11,20 +26,18 @@
 			{
 				Console.ForegroundColor = ConsoleColor.DarkGray;
 				Console.WriteLine($"[Info] {DateTimeOffset.Now.DateTime} {str}");
-				Console.ForegroundColor = ConsoleColor.White;
+				Console.ForegroundColor = ConsoleColor.Gray;
 			}
 #endif
 		}
-		static public void DebugInfoHighlight(string str)
+		static public void DebugGreen(string str)
 		{
 #if DEBUG
 			lock (_lock)
 			{
-				Console.BackgroundColor = ConsoleColor.White;
 				Console.ForegroundColor = ConsoleColor.Green;
 				Console.WriteLine($"[Info] {DateTimeOffset.Now.DateTime} {str}");
-				Console.ForegroundColor = ConsoleColor.White;
-				Console.BackgroundColor = ConsoleColor.Black;
+				Console.ForegroundColor = ConsoleColor.Gray;
 			}
 #endif
 		}
@@ -35,7 +48,7 @@
 			{
 				Console.ForegroundColor = ConsoleColor.Yellow;
 				Console.WriteLine($"[Warning] {DateTimeOffset.Now.DateTime} {str}");
-				Console.ForegroundColor = ConsoleColor.White;
+				Console.ForegroundColor = ConsoleColor.Gray;
 			}
 #endif
 		}
@@ -46,7 +59,7 @@
 			{
 				Console.ForegroundColor = ConsoleColor.Red;
 				Console.WriteLine($"[Error] {DateTimeOffset.Now.DateTime} {str}");
-				Console.ForegroundColor = ConsoleColor.White;
+				Console.ForegroundColor = ConsoleColor.Gray;
 			}
 #endif
 		}
@@ -57,7 +70,7 @@
 			{
 				Console.ForegroundColor = ConsoleColor.Blue;
 				Console.WriteLine($"[Success] {DateTimeOffset.Now.DateTime} {str}");
-				Console.ForegroundColor = ConsoleColor.White;
+				Console.ForegroundColor = ConsoleColor.Gray;
 			}
 #endif
 		}
@@ -87,5 +100,44 @@
 			=> FileIO($"[Warning] {DateTimeOffset.Now.DateTime} {str}");
 		static public void LogError(string str)
 			=> FileIO($"[Error] {DateTimeOffset.Now.DateTime} {str}");
+
+	}
+	public class GameLog
+	{
+		static object _lock = new object();
+		//file i/o
+		static void FileIO(string str)
+		{
+			string path = Directory.GetCurrentDirectory() + "\\game_log";
+			string filename = $"\\log_{DateTimeOffset.Now.Date.ToShortDateString()}.log";
+
+			lock (_lock)
+			{
+				if (!Directory.Exists($"{path}"))
+				{
+					Directory.CreateDirectory($"{path}");
+				}
+				using (var sw = File.AppendText($"{path}{filename}"))
+				{
+					sw.WriteLine(str);
+				}
+			}
+		}
+
+		static public void Write<T>(T type, object[] param) where T : System.Enum
+		{
+			var json = JsonConvert.SerializeObject(param);
+
+			StringBuilder log = new();
+			log.Append("{");
+			log.Append($"\"{type.ToString()}\":");
+			log.Append(json);
+			log.Append("}");
+#if DEBUG
+			Console.WriteLine($"{log} {DateTimeOffset.Now.DateTime} {log}");
+#else
+		FileIO($"[Info] {DateTimeOffset.Now.DateTime} {log}");
+#endif
+		}
 	}
 }

@@ -3,45 +3,37 @@ using System.Net.Sockets;
 
 namespace TCPCore
 {
-	public struct ServerConfig
-	{
-		public ServerConfig(int serverId, string ipv4, int port)
-		{
-			this.ServerId = serverId;
-			this.Ipv4 = ipv4;
-			this.Port = port;
-		}
-		public readonly int ServerId;
-		public readonly string Ipv4;
-		public readonly int Port;
-	}
-
+	
 	public class TCPServer
 	{
-		IPEndPoint endpoint;
+		public static int TotalSessions = 0;
 
-		public virtual void Start(ServerConfig config)
+		short _port { get; set; }
+		// _ip
+
+		public virtual void Start(short port)
 		{
 			String strHostName = string.Empty;
 			IPHostEntry ipEntry = Dns.GetHostEntry(Dns.GetHostName());
 			IPAddress[] addr = ipEntry.AddressList;
 
-			endpoint = new IPEndPoint(/*addr[1]*/
-				address: IPAddress.Parse(config.Ipv4),
-				port: config.Port);
+			this._port = port;
 
-			//Accept new session 
 			_ = Task.Run(Listening);
 		}
 		public async void Listening()
 		{
+			//Recv both ipv6 & ipv4
 			Socket listenSocket = new Socket(
-				addressFamily: endpoint.AddressFamily,
+				addressFamily: AddressFamily.InterNetworkV6,
 				socketType: SocketType.Stream,
 				protocolType: ProtocolType.Tcp);
 
-			listenSocket.Bind(localEP: endpoint);
-			listenSocket.Listen();
+			listenSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+			listenSocket.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.IPv6Only, false);
+
+			listenSocket.Bind(new IPEndPoint(IPAddress.IPv6Any, _port));
+			listenSocket.Listen(100);
 
 			while (true)
 				await listenSocket.AcceptAsync().ContinueWith(AfterAccept);

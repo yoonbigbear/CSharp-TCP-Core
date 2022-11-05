@@ -1,38 +1,69 @@
 ﻿using System.Buffers;
-using System.IO;
 using System.IO.Pipelines;
 using System.Net.Sockets;
-using System.Reflection.PortableExecutable;
 
 namespace TCPCore
 {
 	//https://github.com/davidfowl/TcpEcho/blob/master/src/Server/Program.cs
 	public class TCPSession
 	{
-		protected Socket socket;
+		public PacketQueue RecvPacketQueue { get; set; }
+		public Socket socket;
 		protected PipeReader reader;
+
+
+		private List<ArraySegment<byte>> _sendQueue = new();
+		private List<Tuple<TCPSession, Packet>> _recvQueue = new();
 
 		public TCPSession(Socket socket) => this.socket = socket;
 
+		object _lock = new object();
+		object _leavelock = new object();
+
+		const float _hearbeatBound = 10000;
+		float _hearbeat = 0;
+
 		public virtual void Disconnect()
 		{
-			socket.Shutdown(SocketShutdown.Both);
-			socket.Close();
-			Logger.LogInfo("session disconnect");
+			lock (_leavelock)
+			{
+				//Logger.DebugSuccess($"session disconnect. Total sessions {Interlocked.Decrement(ref TCPServer.TotalSessions)}");
+				_sendQueue.Clear();
+				if (socket != null && socket.Connected)
+				{
+					socket.Shutdown(SocketShutdown.Both);
+				}
+				socket.Close();
+			}
 		}
-		public virtual void Init()
+		public virtual void Start()
 		{
 			socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.NoDelay, true);
 			socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, false);
 
 			var read = new NetworkStream(socket);
-
+			
+			//change pipe buffer size
 			reader = PipeReader.Create(read,
 						new StreamPipeReaderOptions(bufferSize: ushort.MaxValue));
 
 			Task.Run(() => { Receive(); });
 		}
-		public virtual async void Receive()
+		public virtual void Update()
+		{
+			//send packets at one
+			ReleaseSendQueue();
+		}
+
+		void Heartbeat() {
+			if (_hearbeat > _hearbeatBound)
+			{
+				Logger.DebugError("No signal from session.. disconnect");
+				Disconnect();
+			}
+		}
+
+		public async void Receive()
 		{
 			try
 			{
@@ -56,11 +87,22 @@ namespace TCPCore
 						if (buffer.Start.Equals(buffer.End))
 							break;
 
-						var offset = Deserealize(buffer.Slice(0), out var packet);
+						var offset = Deserialize(buffer.Slice(0), out var packet);
 						SequencePosition end = buffer.GetPosition(offset);
 
 						buffer = buffer.Slice(end);
+
+						if (packet.id == -1) //heartbeatid
+						{
+							_hearbeat = 0;
+							continue;
+						}
+
+						_recvQueue.Add(new Tuple<TCPSession, Packet>(this, packet));
 					}
+
+					//enqueue packets
+					RecvPacketQueue.AddRange(_recvQueue);
 
 					//move cursor
 					reader.AdvanceTo(buffer.Start, buffer.End);
@@ -76,39 +118,122 @@ namespace TCPCore
 				Disconnect();
 			}
 		}
-
-
-		public void Send(byte[] bytes) => socket.Send(bytes);
-		public void Send(Packet pkt) => socket.Send(Serealize(pkt));
+		public void Send(Packet pkt)
+		{
+			try
+			{
+				socket.Send(Serialize(pkt));
+			}
+			catch(Exception e)
+			{
+				Logger.DebugError($"Socket Exception {e.Message}");
+				Disconnect();
+			}
+		}
+		public void Send(short id, short dataSize, ArraySegment<byte> bytes)
+		{
+			try
+			{
+				socket.Send(Serialize(id, dataSize, bytes));
+			}
+			catch (Exception e)
+			{
+				Logger.DebugError($"Socket Exception {e.Message}");
+				Disconnect();
+			}
+		}
+		public void Send(ArraySegment<byte> bytes)
+		{
+			lock (_lock)
+			{
+				_sendQueue.Add(bytes);
+			}
+		}
 		public void Send(List<Packet> pkts)
 		{
-			List<ArraySegment<byte>> array = new List<ArraySegment<byte>>();
-
+			List<ArraySegment<byte>> lists = new();
 			foreach (var e in pkts)
-				array.Add(Serealize(e));
+			{
+				lists.Add(Serialize(e));
+			}
+			lock (_lock)
+			{
+				_sendQueue.AddRange(lists);
+			}
+		}
+		public void SendImmediate(Packet pkt)
+		{
+			try
+			{
+				socket.Send(Serialize(pkt));
+			}
+			catch (Exception e)
+			{
+				Logger.DebugError($"Socket Exception {e.Message}");
+				Disconnect();
+			}
+		}
+		public void ReleaseSendQueue()
+		{
+			lock (_leavelock)
+			{
+				if (_sendQueue.Count <= 0)
+					return;
+			}
 
-			socket.Send(array);
+			lock (_lock)
+			{
+				List<ArraySegment<byte>> packets = new();
+				packets.AddRange(_sendQueue);
+				_sendQueue.Clear();
+				try
+				{
+					socket.Send(packets, SocketFlags.None);
+				}
+				catch (Exception e)
+				{
+					Logger.DebugError($"Socket Exception {e.Message}");
+					Disconnect();
+				}
+			}
 		}
 
 
-
-		protected byte[] Serealize(Packet pkt)
+		public ArraySegment<byte> Serialize(Packet pkt)
 		{
 			//header + datasize
-			byte[] array = new byte[sizeof(short) + sizeof(short) + pkt.dataSize];
+			ArraySegment<byte> array = new ArraySegment<byte>
+				(new byte[sizeof(short) + sizeof(short) + pkt.dataSize]);
 
 			int offset = 0;
 			Buffer.BlockCopy(BitConverter.GetBytes(pkt.id),
-				0, array, offset, sizeof(short));
+				0, array.Array, offset, sizeof(short));
 			offset += sizeof(short);
 			Buffer.BlockCopy(BitConverter.GetBytes(pkt.dataSize),
-				0, array, offset, sizeof(short));
+				0, array.Array, offset, sizeof(short));
 			offset += sizeof(short);
-			Buffer.BlockCopy(pkt.data.ToArray(), 0, array, offset, pkt.dataSize);
+			Buffer.BlockCopy(pkt.data.ToArray(), 0, array.Array, offset, pkt.dataSize);
 
 			return array;
 		}
-		protected int Deserealize(ReadOnlySequence<byte> buffer, out Packet packet)
+		public ArraySegment<byte> Serialize(short id, short dataSize, ArraySegment<byte> bytes)
+		{
+			//header + datasize
+			ArraySegment<byte> array = new ArraySegment<byte>
+				(new byte[sizeof(short) + sizeof(short) + dataSize]);
+
+			int offset = 0;
+			Buffer.BlockCopy(BitConverter.GetBytes(id),
+				0, array.Array, offset, sizeof(short));
+			offset += sizeof(short);
+			Buffer.BlockCopy(BitConverter.GetBytes(dataSize),
+				0, array.Array, offset, sizeof(short));
+			offset += sizeof(short);
+			Buffer.BlockCopy(bytes.Array, 0, array.Array, offset, dataSize);
+
+			return array;
+		}
+		protected int Deserialize(ReadOnlySequence<byte> buffer, out Packet packet)
 		{
 			ReadOnlySpan<byte> buf = buffer.FirstSpan;
 			packet = new Packet();
@@ -125,6 +250,7 @@ namespace TCPCore
 
 			return offset;
 		}
+
 
 	}
 }

@@ -20,6 +20,7 @@
 			{
 				packets.AddRange(range);
 			}
+			range.Clear();
 		}
 		public void TransferTo(out List<Tuple<TCPSession, Packet>> output)
 		{
