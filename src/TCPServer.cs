@@ -3,13 +3,10 @@ using System.Net.Sockets;
 
 namespace TCPCore
 {
-	
 	public class TCPServer
 	{
 		public static int TotalSessions = 0;
-
 		short _port { get; set; }
-		// _ip
 
 		public virtual void Start(short port)
 		{

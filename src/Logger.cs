@@ -134,10 +134,12 @@ namespace TCPCore
 			log.Append(json);
 			log.Append("}");
 #if DEBUG
-			Console.WriteLine($"{log} {DateTimeOffset.Now.DateTime} {log}");
+			Logger.DebugGreen($"{DateTimeOffset.Now.DateTime} {log}");
 #else
 		FileIO($"[Info] {DateTimeOffset.Now.DateTime} {log}");
 #endif
 		}
+		static public void Write<T>(T type, object param) where T : System.Enum =>
+			Write(type, new object[]{ param });
 	}
 }

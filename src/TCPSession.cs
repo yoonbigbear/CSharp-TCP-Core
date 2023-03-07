@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 
@@ -7,21 +8,25 @@ namespace TCPCore
 	//https://github.com/davidfowl/TcpEcho/blob/master/src/Server/Program.cs
 	public class TCPSession
 	{
-		public PacketQueue RecvPacketQueue { get; set; }
-		public Socket socket;
-		protected PipeReader reader;
+		public PacketQueue _recvPacketQueue { get; set; }
+		public Socket socket { get; set; }
+		protected PipeReader reader { get; set; }
+		public long SocketHandle { get; set; }
 
 
-		private List<ArraySegment<byte>> _sendQueue = new();
-		private List<Tuple<TCPSession, Packet>> _recvQueue = new();
+		private List<ArraySegment<byte>> _sendQueue { get; set; } = new();
+		private Dictionary<short, Packet> _recvPair { get; set; } = new();
 
 		public TCPSession(Socket socket) => this.socket = socket;
 
 		object _lock = new object();
 		object _leavelock = new object();
 
-		const float _hearbeatBound = 10000;
+		const float _heartbeatTimeOut = 10000;
 		float _hearbeat = 0;
+		int _heartbeatId = -1;
+
+		public Action OnDisconnect;
 
 		public virtual void Disconnect()
 		{
@@ -35,12 +40,13 @@ namespace TCPCore
 				}
 				socket.Close();
 			}
+			OnDisconnect?.Invoke();
 		}
 		public virtual void Start()
 		{
 			socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.NoDelay, true);
 			socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, false);
-
+			
 			var read = new NetworkStream(socket);
 			
 			//change pipe buffer size
@@ -51,12 +57,12 @@ namespace TCPCore
 		}
 		public virtual void Update()
 		{
-			//send packets at one
+			//send all packets at one time
 			ReleaseSendQueue();
 		}
 
-		void Heartbeat() {
-			if (_hearbeat > _hearbeatBound)
+		protected void HeartBeat() {
+			if (_hearbeat > _heartbeatTimeOut)
 			{
 				Logger.DebugError("No signal from session.. disconnect");
 				Disconnect();
@@ -71,14 +77,15 @@ namespace TCPCore
 				{
 					//recv data must be less than max buffer size
 					ReadResult result = await reader.ReadAsync();
-					ReadOnlySequence<byte> buffer = result.Buffer;
+					var buffer = result.Buffer;
 
 					//no more
 					if (result.IsCompleted)
 						break;
 
+					var remainData = buffer.Length;
 					//client disconnected
-					if (buffer.Length == 0)
+					if (remainData == 0)
 						return;
 
 					//read data
@@ -89,28 +96,27 @@ namespace TCPCore
 
 						var offset = Deserialize(buffer.Slice(0), out var packet);
 						SequencePosition end = buffer.GetPosition(offset);
-
 						buffer = buffer.Slice(end);
 
-						if (packet.id == -1) //heartbeatid
+						if (packet.id == _heartbeatId) //heartbeatid
 						{
 							_hearbeat = 0;
 							continue;
 						}
 
-						_recvQueue.Add(new Tuple<TCPSession, Packet>(this, packet));
+						_recvPair[packet.id] = packet;
 					}
 
 					//enqueue packets
-					RecvPacketQueue.AddRange(_recvQueue);
-
+					_recvPacketQueue.AddRange(_recvPair.Values.ToList());
+					_recvPair.Clear();
 					//move cursor
 					reader.AdvanceTo(buffer.Start, buffer.End);
 				}
 			}
 			catch (Exception e)
 			{
-				Logger.DebugError($"Receive Error {e}");
+				Logger.DebugError($"Receive Error {e.Message}");
 			}
 			finally
 			{
@@ -130,7 +136,7 @@ namespace TCPCore
 				Disconnect();
 			}
 		}
-		public void Send(short id, short dataSize, ArraySegment<byte> bytes)
+		public void Send(short id, int dataSize, ArraySegment<byte> bytes)
 		{
 			try
 			{
@@ -188,7 +194,7 @@ namespace TCPCore
 				_sendQueue.Clear();
 				try
 				{
-					socket.Send(packets, SocketFlags.None);
+					socket.Send(packets);
 				}
 				catch (Exception e)
 				{
@@ -199,36 +205,36 @@ namespace TCPCore
 		}
 
 
-		public ArraySegment<byte> Serialize(Packet pkt)
+		static public ArraySegment<byte> Serialize(Packet pkt)
 		{
 			//header + datasize
 			ArraySegment<byte> array = new ArraySegment<byte>
-				(new byte[sizeof(short) + sizeof(short) + pkt.dataSize]);
+				(new byte[sizeof(short) + sizeof(int) + pkt.dataSize]);
 
 			int offset = 0;
 			Buffer.BlockCopy(BitConverter.GetBytes(pkt.id),
 				0, array.Array, offset, sizeof(short));
 			offset += sizeof(short);
 			Buffer.BlockCopy(BitConverter.GetBytes(pkt.dataSize),
-				0, array.Array, offset, sizeof(short));
-			offset += sizeof(short);
+				0, array.Array, offset, sizeof(int));
+			offset += sizeof(int);
 			Buffer.BlockCopy(pkt.data.ToArray(), 0, array.Array, offset, pkt.dataSize);
 
 			return array;
 		}
-		public ArraySegment<byte> Serialize(short id, short dataSize, ArraySegment<byte> bytes)
+		static public ArraySegment<byte> Serialize(short id, int dataSize, ArraySegment<byte> bytes)
 		{
 			//header + datasize
 			ArraySegment<byte> array = new ArraySegment<byte>
-				(new byte[sizeof(short) + sizeof(short) + dataSize]);
+				(new byte[sizeof(short) + sizeof(int) + dataSize]);
 
 			int offset = 0;
 			Buffer.BlockCopy(BitConverter.GetBytes(id),
 				0, array.Array, offset, sizeof(short));
 			offset += sizeof(short);
 			Buffer.BlockCopy(BitConverter.GetBytes(dataSize),
-				0, array.Array, offset, sizeof(short));
-			offset += sizeof(short);
+				0, array.Array, offset, sizeof(int));
+			offset += sizeof(int);
 			Buffer.BlockCopy(bytes.Array, 0, array.Array, offset, dataSize);
 
 			return array;
@@ -237,13 +243,15 @@ namespace TCPCore
 		{
 			ReadOnlySpan<byte> buf = buffer.FirstSpan;
 			packet = new Packet();
+
+			//return transferred size
 			int offset = 0;
 
 			packet.id = BitConverter.ToInt16(buf.Slice(offset, sizeof(short)));
 			offset += sizeof(short);
 
-			packet.dataSize = BitConverter.ToInt16(buf.Slice(offset, sizeof(short)));
-			offset += sizeof(short);
+			packet.dataSize = BitConverter.ToInt32(buf.Slice(offset, sizeof(int)));
+			offset += sizeof(int);
 
 			packet.data = buf.Slice(offset, packet.dataSize).ToArray();
 			offset += packet.dataSize;

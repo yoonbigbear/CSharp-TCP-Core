@@ -3,18 +3,18 @@
 
 	public struct Packet
 	{
-		public short id;
-		public short dataSize;
-		public ArraySegment<byte> data;
+		public short id { get; set; }
+		public int dataSize { get; set; }
+		public ArraySegment<byte> data { get; set; }
 	}
 
 	public class PacketQueue
 	{
-		public List<Tuple<TCPSession, Packet>> packets = new();
+		public List<Packet> packets = new();
 
 		object _lock = new object();
 
-		public void AddRange(List<Tuple<TCPSession, Packet>> range)
+		public void AddRange(List<Packet> range)
 		{
 			lock(this._lock)
 			{
@@ -22,7 +22,7 @@
 			}
 			range.Clear();
 		}
-		public void TransferTo(out List<Tuple<TCPSession, Packet>> output)
+		public void TransferTo(out List<Packet> output)
 		{
 			lock (this._lock)
 			{
@@ -34,18 +34,18 @@
 
 	public class PacketHandler
 	{
-		private Dictionary<short, Action<TCPSession, ArraySegment<byte>>> packetHandler = new();
+		private Dictionary<short, Action<ArraySegment<byte>>> packetHandler = new();
 
-		public bool Bind(short protocol, Action<TCPSession, ArraySegment<byte>> callback)
+		public bool Bind(short protocol, Action<ArraySegment<byte>> callback)
 		{
 			return packetHandler.TryAdd(protocol, callback);
 		}
 
-		public virtual void Invoke(TCPSession session, Packet packet)
+		public virtual void Invoke(Packet packet)
 		{
 			if (packetHandler.ContainsKey(packet.id))
 			{
-				packetHandler[packet.id].Invoke(session, packet.data);
+				packetHandler[packet.id].Invoke(packet.data);
 			}
 			else
 			{
