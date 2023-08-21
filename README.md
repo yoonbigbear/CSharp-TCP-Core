@@ -11,9 +11,9 @@
 
 [.Net6](https://dotnet.microsoft.com/en-us/download) / [System.IO.Pipeline](https://www.nuget.org/packages/System.IO.Pipelines/)
 
-## Info
+## History
 
-- pipereader 버퍼크기는 4096이 기본. 65535로 변경 함.
+- pipereader 버퍼 4096 byte -> 65535 byte로 변경 함.
 
 ## To do
 
