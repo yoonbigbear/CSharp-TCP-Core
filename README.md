@@ -9,7 +9,7 @@
 
 ## Requirements
 
-[.Net6](https://dotnet.microsoft.com/en-us/download) / [System.IO.Pipeline](https://www.nuget.org/packages/System.IO.Pipelines/)
+[.Net7](https://dotnet.microsoft.com/en-us/download) / [System.IO.Pipeline](https://www.nuget.org/packages/System.IO.Pipelines/)
 
 ## History
 
@@ -18,3 +18,5 @@
 ## To do
 
 - [ ] 처리 시간이 긴 작업은 쓰레드풀 사용하지 않고 별도 쓰레드를 사용하도록 변경
+- [ ] 락 변경
+- [ ] I/O는 비동기, CPU Bound는 Task Run으로 별도처리
