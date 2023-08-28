@@ -17,6 +17,6 @@
 
 ## To do
 
-- [ ] 처리 시간이 긴 작업 혹은 루프는 Long-Running 옵션으로 태스크 새로 생성
-- [ ] 락 변경
-- [ ] I/O는 비동기, CPU Bound는 Task Run으로 별도처리
+- [x] 처리 시간이 긴 작업 혹은 루프는 Long-Running 옵션으로 태스크 새로 생성
+- [x] 락 변경
+- [x] I/O는 비동기, CPU Bound는 Task Run으로 별도처리
