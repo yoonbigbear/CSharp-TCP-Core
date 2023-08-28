@@ -19,6 +19,8 @@ public class Server : TCPCore.TCPServer
     public override void Start(short port)
     {
 	base.Start(port);
+
+	// Initialize some game server stuffs
     }
 
     // connected client callback
