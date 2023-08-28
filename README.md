@@ -11,6 +11,25 @@
 
 [.Net7](https://dotnet.microsoft.com/en-us/download) / [System.IO.Pipeline](https://www.nuget.org/packages/System.IO.Pipelines/)
 
+## Example
+```C#
+public class Server : TCPCore.TCPServer
+{
+    // listening client connection internally
+    public override void Start(short port)
+    {
+		  base.Start(port);
+    }
+
+    // connected client callback
+    public override void AfterAccept(Socket socketTask)
+	  {
+       // do something with socketTask.. 
+    }
+}
+```
+
+
 ## History
 
 - pipereader 버퍼 4096 byte -> 65535 byte로 변경 함.
